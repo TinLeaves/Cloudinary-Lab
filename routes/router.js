@@ -344,4 +344,72 @@ router.post('/addPet', async (req, res) => {
 	}
 });
 
+router.post('/setUserPic', upload.single('image'), async (req, res) => {
+    try {
+        const user_id = req.body.user_id;
+
+        const schema = Joi.object({
+            user_id: Joi.string().alphanum().min(24).max(24).required()
+        });
+
+        const validationResult = schema.validate({ user_id });
+
+        if (validationResult.error) {
+            console.log(validationResult.error);
+            res.render('error', { message: 'Invalid user_id' });
+            return;
+        }
+
+        const imageBuffer = req.file.buffer;
+        const uploadResult = await cloudinary.uploader.upload(imageBuffer, { folder: 'user_images' });
+
+        const success = await userCollection.updateOne({ "_id": new ObjectId(user_id) },
+            { $set: { image_url: uploadResult.secure_url } });
+
+        if (!success) {
+            res.render('error', { message: 'Error setting user picture' });
+            return;
+        }
+
+        res.redirect(`/showUser?id=${user_id}`);
+    } catch (ex) {
+        res.render('error', { message: 'Error connecting to MongoDB' });
+        console.log("Error connecting to MongoDB");
+        console.log(ex);
+    }
+});
+
+router.get('/deleteUserPic', async (req, res) => {
+    try {
+        const user_id = req.query.id;
+
+        const schema = Joi.object({
+            user_id: Joi.string().alphanum().min(24).max(24).required()
+        });
+
+        const validationResult = schema.validate({ user_id });
+
+        if (validationResult.error) {
+            console.log(validationResult.error);
+            res.render('error', { message: 'Invalid user_id' });
+            return;
+        }
+
+        const success = await userCollection.updateOne({ "_id": new ObjectId(user_id) },
+            { $unset: { image_url: "" } });
+
+        if (!success) {
+            res.render('error', { message: 'Error deleting user picture' });
+            return;
+        }
+
+        res.redirect(`/showUser?id=${user_id}`);
+    } catch (ex) {
+        res.render('error', { message: 'Error connecting to MongoDB' });
+        console.log("Error connecting to MongoDB");
+        console.log(ex);
+    }
+});
+
+
 module.exports = router;
