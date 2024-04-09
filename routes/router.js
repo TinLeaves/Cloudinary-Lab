@@ -344,7 +344,7 @@ router.post('/addPet', async (req, res) => {
 	}
 });
 
-router.post('/setUserPic', upload.single('image'), async (req, res) => {
+router.post('/setUserPic', upload.single('image'), async (req, res, next) => {
     try {
         const user_id = req.body.user_id;
 
@@ -360,18 +360,20 @@ router.post('/setUserPic', upload.single('image'), async (req, res) => {
             return;
         }
 
-        const imageBuffer = req.file.buffer;
-        const uploadResult = await cloudinary.uploader.upload(imageBuffer, { folder: 'user_images' });
+        const buf64 = req.file.buffer.toString('base64');
+        const uploadResult = await cloudinary.uploader.upload("data:image/octet-stream;base64," + buf64, { folder: 'user_images' });
+
+        console.log(uploadResult);
 
         const success = await userCollection.updateOne({ "_id": new ObjectId(user_id) },
-            { $set: { image_url: uploadResult.secure_url } });
+            { $set: { image_id: uploadResult.public_id } }); // Store the public_id returned by Cloudinary
 
         if (!success) {
             res.render('error', { message: 'Error setting user picture' });
             return;
         }
 
-        res.redirect(`/showUser?id=${user_id}`);
+        res.redirect('/');
     } catch (ex) {
         res.render('error', { message: 'Error connecting to MongoDB' });
         console.log("Error connecting to MongoDB");
@@ -395,6 +397,22 @@ router.get('/deleteUserPic', async (req, res) => {
             return;
         }
 
+        const user = await userCollection.findOne({ "_id": new ObjectId(user_id) });
+
+        if (!user || !user.image_url) {
+            res.render('error', { message: 'User picture not found' });
+            return;
+        }
+
+        const public_id = user.image_url.split('/').pop().split('.')[0]; // Extract public_id from image_url
+
+        const deleteResult = await cloudinary.uploader.destroy(public_id);
+
+        if (deleteResult.result !== 'ok') {
+            res.render('error', { message: 'Error deleting user picture from Cloudinary' });
+            return;
+        }
+
         const success = await userCollection.updateOne({ "_id": new ObjectId(user_id) },
             { $unset: { image_url: "" } });
 
@@ -410,6 +428,5 @@ router.get('/deleteUserPic', async (req, res) => {
         console.log(ex);
     }
 });
-
 
 module.exports = router;
